@@ -13,9 +13,39 @@ This bot:
 import random
 
 from cambc import Controller, Direction, EntityType, Environment, Position
+from const.const import BuilderState
 
 # non-centre directions
 DIRECTIONS = [d for d in Direction if d != Direction.CENTRE]
+
+QUANDRANT = { 
+    0: { 
+        0: Direction.NORTHWEST,
+        1: Direction.NORTH,
+        2: Direction.NORTHEAST, 
+    },
+    1: { 
+        0: Direction.WEST,
+        1: Direction.CENTRE,
+        2: Direction.EAST, 
+    },
+    2: { 
+        0: Direction.SOUTHWEST,
+        1: Direction.SOUTH,
+        2: Direction.SOUTHEAST, 
+    }
+}
+
+TARGET = { 
+    Direction.NORTHWEST: Direction.SOUTHEAST, 
+    Direction.NORTHEAST: Direction.SOUTHWEST, 
+    Direction.NORTH: Direction.SOUTH, 
+    Direction.WEST: Direction.EAST, 
+    Direction.EAST: Direction.WEST, 
+    Direction.SOUTHWEST: Direction.NORTHEAST, 
+    Direction.SOUTH: Direction.NORTH, 
+    Direction.SOUTHEAST: Direction.NORTHWEST, 
+}
 
 class Player:
     def __init__(self):
@@ -24,7 +54,7 @@ class Player:
     def run(self, ct: Controller) -> None:
         etype = ct.get_entity_type()
         if etype == EntityType.CORE:
-            if self.num_spawned < 3:
+            if self.num_spawned < 5:
                 # if we haven't spawned 3 builder bots yet, try to spawn one on a random tile
                 spawn_pos = ct.get_position().add(random.choice(DIRECTIONS))
                 if ct.can_spawn(spawn_pos):
@@ -52,3 +82,30 @@ class Player:
             marker_pos = ct.get_position().add(random.choice(DIRECTIONS))
             if ct.can_place_marker(marker_pos):
                 ct.place_marker(marker_pos, ct.get_current_round())
+
+
+class Builder: 
+    def __init__(self, ct: Controller): 
+        self.core = [ct.get_position(id) for id in ct.get_nearby_buildings(1) if ct.get_entity_type(id) == EntityType.CORE][0]
+        self.stage = BuilderState.SEARCHING
+
+        self.height = ct.get_map_height
+        self.width = ct.get_map_width
+        self.core_quad = QUANDRANT[self.core.x % (self.width // 3)][self.core.y % (self.height // 3)]
+        self.target = TARGET[self.core_quad]
+
+        self.direction = Direction.NORTH
+
+
+    def run(self, ct: Controller): 
+        markers = self.read_markers()
+
+
+
+
+
+    def read_markers(self, ct: Controller): 
+        return [(ct.get_marker_value(id), ct.get_position(id)) for id in ct.get_nearby_entities() if ct.get_entity_type(id) == EntityType.MARKER]
+        
+
+    
