@@ -22,4 +22,13 @@ class Player:
         self.num_spawned = 0 # number of builder bots spawned so far (core)
 
     def run(self, ct: Controller) -> None:
-        pass
+        etype = ct.get_entity_type()
+        if etype == EntityType.CORE:
+            if self.num_spawned < 5:
+                # if we haven't spawned 3 builder bots yet, try to spawn one on a random tile
+                spawn_pos = ct.get_position().add(random.choice(DIRECTIONS))
+                if ct.can_spawn(spawn_pos):
+                    ct.spawn_builder(spawn_pos)
+                    self.num_spawned += 1
+        elif etype == EntityType.BUILDER_BOT:
+            pass
