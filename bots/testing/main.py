@@ -96,12 +96,14 @@ class Builder:
 
         self.direction = Direction.NORTH
 
+        self.grid = [dict() ]
+
 
     def run(self, ct: Controller): 
         markers = self.read_markers()
 
 
-
+    def 
 
 
     def read_markers(self, ct: Controller): 

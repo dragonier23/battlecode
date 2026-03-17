@@ -1,5 +1,6 @@
 from cambc import Controller, Environment, Position, EntityType
 from typing import List
+from const import TileState
 
 class BuilderBot:
     def __init__(self):
@@ -10,6 +11,7 @@ class BuilderBot:
         self.w = ct.get_map_width()
         self.h = ct.get_map_height()
         self.tile_env : List[List[Environment | None]] = [[None for _ in range(self.h)] for _ in range(self.w)]
+        self.grid : List[List[TileState | None]] = [[None for _ in range(self.h)] for _ in range(self.w)]
 
         self.core_id = [ent for ent in ct.get_nearby_entities(2) if ct.get_entity_type(ent) == EntityType.CORE][0]
         self.core_pos = ct.get_position(self.core_id)
