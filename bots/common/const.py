@@ -1,6 +1,38 @@
 from enum import Enum
 from cambc import Environment, EntityType, Team, Direction
 
+Pathable = [None, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CONVEYOR, EntityType.ROAD, EntityType.SPLITTER, EntityType.BRIDGE]
+Passable = [None, EntityType.ARMOURED_CONVEYOR, EntityType.CONVEYOR, EntityType.ROAD] # Should also be able to path through an allied core, but avoided for simplicity now o
+
+Quadrant = { 
+    0: { 
+        0: Direction.NORTHWEST,
+        1: Direction.NORTH,
+        2: Direction.NORTHEAST, 
+    },
+    1: { 
+        0: Direction.WEST,
+        1: Direction.CENTRE,
+        2: Direction.EAST, 
+    },
+    2: { 
+        0: Direction.SOUTHWEST,
+        1: Direction.SOUTH,
+        2: Direction.SOUTHEAST, 
+    }
+}
+
+Target = { 
+    Direction.NORTHWEST: Direction.SOUTHEAST, 
+    Direction.NORTHEAST: Direction.SOUTHWEST, 
+    Direction.NORTH: Direction.SOUTH, 
+    Direction.WEST: Direction.EAST, 
+    Direction.EAST: Direction.WEST, 
+    Direction.SOUTHWEST: Direction.NORTHEAST, 
+    Direction.SOUTH: Direction.NORTH, 
+    Direction.SOUTHEAST: Direction.NORTHWEST, 
+}
+
 class DirectedBuildings(Enum): 
     __slot__ = () 
 
