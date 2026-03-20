@@ -52,10 +52,9 @@ class BuilderState(Enum):
     CONVEY = "convey"
 
 class BuildingState: 
-    def __init__(self, type: EntityType, direction: Direction, bot: bool = False): 
+    def __init__(self, type: EntityType, direction: Direction): 
         self.type = type 
         self.direction = direction
-        self.bot = bot
 
 class MarkerState: 
     def __init__(self, message): 
@@ -68,11 +67,14 @@ class TileState:
     Environment: Empty, Wall, Ore type
     Building: Contains the object type and the direction it is facing. 
     '''
-    def __init__(self, env: Environment | None = None,
+    def __init__(self, 
+                 env: Environment | None = None,
                  team: Team | None = None,
                  building: BuildingState | None = None,
-                 marker: MarkerState | None = None): 
+                 marker: MarkerState | None = None,
+                 bot: bool = False): 
         self.team = team 
         self.env = env
         self.building = building
         self.marker = marker
+        self.bot = bot
