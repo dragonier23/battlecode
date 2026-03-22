@@ -1,17 +1,20 @@
+import sys
 from typing import List, Deque
 
 from cambc import Controller, Environment, Position, EntityType, Direction
 
-from bot_state import BotState, Idle
-from const import BuilderState, Passable, Quadrant
-from utils import pos_within_r2, is_in_bounds
+from bot_state import *
+from pathfinder import DStarLite
+from const import BuilderState, PASSABLE, BuildingState, Quadrant, ORTHOGONAL_DIRS
+from utils import is_movable, pos_within_r2, is_in_bounds
 from memory import Memory
 from pathfinding import BFS
+import random
 
 class BuilderBot:
     def __init__(self):
         self.initialised = False
-        self.state : BotState = Idle()
+        self.state : BotState = Init()
 
     def init(self, ct: Controller) -> None:
         """Intended to be called when the bot first spawns and run is called."""
@@ -25,12 +28,11 @@ class BuilderBot:
         self.core_quad = Quadrant[self.core_pos.x // (self.w // 3)][self.core_pos.y // (self.h // 3)]
         self.opp_core_pos = Position(self.w - self.core_pos.x, self.h - self.core_pos.y)
 
-        self.state = BuilderState.SEARCHING
         self.target = Position(6, 1) # self.opp_core_pos # [Position(0, 0), Position(0, self.h), Position(self.w, 0), Position(self.w, self.h), Position(self.w // 2, 0), Position(self.w // 2, self.h // 2), Position(0, self.h // 2), Position(self.w, self.h // 2), Position(self.w // 2, self.h)][self.i]# target
         self.conveyor_path: Deque[tuple[Position, Direction]] | None = None
         self.initialised = True
 
-        self.search_strategy = BFS(Direction, lambda tile: tile.env != Environment.WALL and (tile.building == None or tile.building.type in Passable))
+        self.search_strategy = BFS(Direction, lambda tile: tile.env != Environment.WALL and (tile.building == None or tile.building.type in PASSABLE))
         self.conveyor_strategy = BFS([Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST], lambda tile: (tile.env == None and (tile.team == None or tile.team == ct.get_team()) and tile.building == None and tile.bot == False) or (tile.building.type == EntityType.CORE and tile.team == ct.get_team())) 
 
     def run(self, ct: Controller) -> None:
@@ -38,14 +40,26 @@ class BuilderBot:
             self.init(ct)
         self.memory.update(ct)
 
-        match self.state: 
-            case BuilderState.SEARCHING: 
-                self.search(ct, self.target)
-            case BuilderState.CONVEY: 
-                self.convey(ct, ct.get_position())
+    def explore(self, ct: Controller, direction: Direction) -> bool:
+        directions = [direction, direction, direction.rotate_left(), direction.rotate_right()]
+        random.shuffle(directions)
+        for d in directions:
+            if is_movable(self.memory.grid, ct.get_position().add(d)) and self.move_may_build_road(ct, d):
+                return True
+        return False
+    
+    def harvest_new_resource(self, ct: Controller) -> None:
+        resource_pos = self.get_closest_resource(ct)
+        if resource_pos is not None:
+            resource_ortho_pos = min([resource_pos.add(d) for d in ORTHOGONAL_DIRS if is_movable(self.memory.grid, resource_pos.add(d))], key=lambda p: p.distance_squared(resource_pos), default=None)
+            if resource_ortho_pos is not None:
+                self.state = MoveTo(DStarLite(self.memory.grid, ct.get_position(), resource_ortho_pos, r2=2), Harvest(resource_pos))
+            else:
+                self.state = Explore(5, random.choice(ORTHOGONAL_DIRS))
+        else:
+            self.state = Explore(5, random.choice(ORTHOGONAL_DIRS))
 
-
-    def build_road_and_move(self, ct: Controller, direction: Direction) -> bool:
+    def move_may_build_road(self, ct: Controller, direction: Direction) -> bool:
         """Move in given direction. If necessary, builds a road first. Returns True if successful."""
         pos = ct.get_position().add(direction)
         if ct.can_build_road(pos):
@@ -63,8 +77,9 @@ class BuilderBot:
 
         for x in range(self.w):
             for y in range(self.h):
-                tile = self.grid[x][y]
-                if tile.env in [Environment.ORE_AXIONITE, Environment.ORE_TITANIUM]:
+                tile = self.memory.grid[x][y]
+                if tile.env in [Environment.ORE_AXIONITE, Environment.ORE_TITANIUM] and \
+                    (not tile.building or tile.building.type != EntityType.HARVESTER):
                     print("Found resource at", x, y)
                     distance = pos.distance_squared(Position(x, y))
                     if distance < closest_distance:
@@ -73,11 +88,9 @@ class BuilderBot:
 
         return closest_resource
 
-    def get_direction(self, goal: Position, ct: Controller) -> Direction:
-        """Returns next direction to move to get from current position to goal, using a simple local strategy."""
-        adjacent = [p for p in pos_within_r2(self.w, self.h, ct.get_position(), 2) if p != ct.get_position() and ct.get_tile_env(p) != Environment.WALL]
-        adjacent.sort(key=lambda p: p.distance_squared(goal))
-        return ct.get_position().direction_to(adjacent[0]) if adjacent else Direction.CENTRE
+    def get_closest_adj_pos(self, ct: Controller, pos: Position) -> Position:
+        """Returns the closest square in a 3x3 area centred at pos to the bot's current position."""
+        return min([p for p in pos_within_r2(self.w, self.h, pos, 2) if is_movable(self.memory.grid, p)], key=lambda p: ct.get_position().distance_squared(p))
 
     def search(self, ct: Controller, target: Position) -> None: 
         for d in [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]:
@@ -115,6 +128,48 @@ class BuilderBot:
             # if ct.can_build_road(currPos): 
             ct.build_road(currPos.add(nextDirection))
             self.conveyor_path.appendleft((currPos, nextDirection))
+
+    def convey2(self, ct: Controller, path_finder: PathFinder):
+        """Convey written by Justin"""
+        next_pos = path_finder.get_next_pos(ct.get_position(), self.memory.grid)
+        print(next_pos)
+        if next_pos:
+            prev_pos = ct.get_position()
+            direction = prev_pos.direction_to(next_pos)
+            if self.move_may_build_road(ct, direction):
+                if self.memory.grid[prev_pos.x][prev_pos.y].building != BuildingState(EntityType.CONVEYOR, direction):
+                    if ct.can_destroy(prev_pos):
+                        ct.destroy(prev_pos)
+                    if ct.can_build_conveyor(prev_pos, direction):
+                        ct.build_conveyor(prev_pos, direction)
+                    else:
+                        self.state = ConveyBuildConveyor(prev_pos, self.state)
+                else:
+                    self.harvest_new_resource(ct)
+
+    def get_suitable_bridge_pos(self, ct: Controller, resource_pos: Position) -> Position | None:
+        """Returns a position adjacent to resource_pos that would be suitable for building a bridge, or None if no such position exists."""
+        for d in ORTHOGONAL_DIRS:
+            pos = resource_pos.add(d)
+            if self.memory.grid[pos.x][pos.y].env == Environment.EMPTY:
+                return pos
+        return None
+
+    def bridge_convey(self, ct: Controller, path_finder: PathFinder):
+        """Convey via bridges"""
+        cur_pos = ct.get_position()
+        next_pos = path_finder.get_next_pos(path_finder.s_start, self.memory.grid)
+        if next_pos:
+            # Place bridge
+            if ct.can_destroy(cur_pos):
+                ct.destroy(cur_pos)
+            if ct.can_build_bridge(cur_pos, next_pos):
+                ct.build_bridge(cur_pos, next_pos)
+                # Move close to next pos, repeat
+                self.state = MoveTo(
+                    DStarLite(self.memory.grid, ct.get_position(), next_pos, r2=2),
+                    next_state=self.state
+                )
             
 
     def update_conveyor_path(self, ct: Controller, pos: Position) -> None: 

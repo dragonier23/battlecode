@@ -1,8 +1,12 @@
 from enum import Enum
 from cambc import Environment, EntityType, Team, Direction
 
-Pathable = [None, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CONVEYOR, EntityType.ROAD, EntityType.SPLITTER, EntityType.BRIDGE]
-Passable = [None, EntityType.ARMOURED_CONVEYOR, EntityType.CONVEYOR, EntityType.ROAD] # Should also be able to path through an allied core, but avoided for simplicity now o
+BUILDER_BOT_ACTION_RADIUS_SQUARED = 2
+
+ORTHOGONAL_DIRS = [Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST]
+
+PATHABLE = [None, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CONVEYOR, EntityType.ROAD, EntityType.SPLITTER, EntityType.BRIDGE]
+PASSABLE = [None, EntityType.ARMOURED_CONVEYOR, EntityType.CONVEYOR, EntityType.ROAD, EntityType.CORE] # Should also be able to path through an allied core, but avoided for simplicity now o (allowed now)
 
 Quadrant = { 
     0: { 
@@ -43,7 +47,6 @@ class DirectedBuildings(Enum):
     CONVEYOR = "conveyor"
     SPLITTER = "splitter"
     ARMOURED_CONVEYOR = "armoured_conveyor"
-    BRIDGE = "bridge"
 
 class BuilderState(Enum): 
     __slot__ = ()
@@ -52,10 +55,9 @@ class BuilderState(Enum):
     CONVEY = "convey"
 
 class BuildingState: 
-    def __init__(self, type: EntityType, direction: Direction, bot: bool = False): 
+    def __init__(self, type: EntityType, direction: Direction): 
         self.type = type 
         self.direction = direction
-        self.bot = bot
 
 class MarkerState: 
     def __init__(self, message): 
@@ -68,11 +70,14 @@ class TileState:
     Environment: Empty, Wall, Ore type
     Building: Contains the object type and the direction it is facing. 
     '''
-    def __init__(self, env: Environment | None = None,
+    def __init__(self, 
+                 env: Environment | None = None,
                  team: Team | None = None,
                  building: BuildingState | None = None,
-                 marker: MarkerState | None = None): 
+                 marker: MarkerState | None = None,
+                 bot: bool = False): 
         self.team = team 
         self.env = env
         self.building = building
         self.marker = marker
+        self.bot = bot

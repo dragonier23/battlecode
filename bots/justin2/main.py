@@ -1,4 +1,5 @@
 import random
+import sys
 
 from cambc import Controller, Direction, EntityType, Environment, Position, Team
 from pathfinder import DStarLite
@@ -30,6 +31,7 @@ class Core:
         self.num_spawned = 0
         self.spawn_direction : Direction = Direction.NORTHEAST
     def run(self, ct: Controller) -> None:
+        # print(ct.get_current_round(), file=sys.stderr)
         # if ct.get_team() == Team.B:
         #     return
         # if ct.get_current_round() == 50:
@@ -79,7 +81,9 @@ class BuilderBot_(BuilderBot):
                     if ct.can_destroy(resource_pos):
                         ct.destroy(resource_pos)
                     ct.build_harvester(resource_pos)
-                    self.state = Convey(DStarLite(self.memory.grid, ct.get_position(), self.get_closest_adj_pos(ct, self.core_pos), r2=1))
+                    self.state = BridgeConvey(
+                        DStarLite(self.memory.grid, self.get_suitable_bridge_pos(ct, resource_pos), self.get_closest_adj_pos(ct, self.core_pos), r2=9)
+                    )
             case Convey(path_finder):
                 if ct.get_position().distance_squared(self.core_pos) <= 2:
                     self.harvest_new_resource(ct)
@@ -91,5 +95,10 @@ class BuilderBot_(BuilderBot):
                 if ct.can_build_conveyor(build_pos, build_pos.direction_to(ct.get_position())):
                     ct.build_conveyor(build_pos, build_pos.direction_to(ct.get_position()))
                     self.state = next_state
+            case BridgeConvey(path_finder):
+                if path_finder.s_start.distance_squared(self.core_pos) <= 2:
+                    self.harvest_new_resource(ct)
+                else:
+                    self.bridge_convey(ct, path_finder)
                 
 
