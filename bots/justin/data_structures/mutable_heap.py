@@ -75,11 +75,30 @@ class MutableHeap:
     
 if __name__ == "__main__":
     h = MutableHeap()
-    h.push(5)
-    h.push(3)
-    h.push(8)
-    print(h.pop())  # 3
-    h.push(1)
-    print(h.pop())  # 1
-    h.remove(5)
-    print(h.pop())  # 8
+    import time
+    N = 1000000
+    t0 = time.perf_counter()
+    for i in range(N):
+        h.push(i)
+    for i in range(N):
+        h.remove(i)
+    t1 = time.perf_counter()
+    print(f"Pushing and popping 1,000,000 items took {(t1-t0)*1000:.4f} ms")
+    import queue
+    q = queue.PriorityQueue()
+    t0 = time.perf_counter()
+    for i in range(N):
+        q.put(i)
+    for i in range(N):
+        q.get()
+    t1 = time.perf_counter()
+    print(f"Pushing and popping 1,000,000 items from queue.PriorityQueue took {(t1-t0)*1000:.4f} ms")
+    import heapq
+    h = []
+    t0 = time.perf_counter()
+    for i in range(N):
+        heapq.heappush(h, i)
+    for i in range(N):
+        heapq.heappop(h)
+    t1 = time.perf_counter()
+    print(f"Pushing and popping 1,000,000 items from heapq took {(t1-t0)*1000:.4f} ms")

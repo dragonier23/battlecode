@@ -6,7 +6,7 @@ BUILDER_BOT_ACTION_RADIUS_SQUARED = 2
 ORTHOGONAL_DIRS = [Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST]
 
 PATHABLE = [None, EntityType.ARMOURED_CONVEYOR, EntityType.BUILDER_BOT, EntityType.CONVEYOR, EntityType.ROAD, EntityType.SPLITTER, EntityType.BRIDGE]
-PASSABLE = [None, EntityType.ARMOURED_CONVEYOR, EntityType.CONVEYOR, EntityType.ROAD, EntityType.CORE] # Should also be able to path through an allied core, but avoided for simplicity now o (allowed now)
+PASSABLE = [None, EntityType.ARMOURED_CONVEYOR, EntityType.CONVEYOR, EntityType.ROAD, EntityType.CORE, EntityType.BRIDGE] # Should also be able to path through an allied core, but avoided for simplicity now o (allowed now)
 
 Quadrant = { 
     0: { 

@@ -1,4 +1,5 @@
 import random
+import time
 
 from cambc import Controller, Direction, EntityType, Environment, Position, Team
 from pathfinder import DStarLite
@@ -46,50 +47,52 @@ class BuilderBot_(BuilderBot):
         super().__init__()
 
     def run(self, ct: Controller) -> None:
+        t0 = time.perf_counter()
         super().run(ct)
         print(self.state)
-        match self.state:
-            case Init():
-                direction = self.core_pos.direction_to(ct.get_position())
-                self.state = Explore(5, direction)
-                self.run(ct)
-            case Explore(turns_left, direction):
-                if self.explore(ct, direction):
-                    self.state = Explore(turns_left - 1, direction)
-                else:
-                    turns_left = 0 # end exploration early if we get blocked by something
-                if turns_left <= 0:
-                    self.harvest_new_resource(ct)
-            case MoveTo(path_finder, next_state):
-                if ct.get_position() == path_finder.s_goal:
-                    self.state = next_state
-                    self.run(ct)
-                else:
-                    next_pos = path_finder.get_next_pos(ct.get_position(), self.memory.grid)
-                    print(next_pos)
-                    if next_pos:
-                        direction = ct.get_position().direction_to(next_pos)
-                        self.move_may_build_road(ct, direction)
-            case Patrol():
-                pass
-            case Harvest(resource_pos):
-                if self.memory.grid[resource_pos.x][resource_pos.y].building and self.memory.grid[resource_pos.x][resource_pos.y].building.type == EntityType.HARVESTER:
-                    self.harvest_new_resource(ct)
-                if ct.can_build_harvester(resource_pos):
-                    if ct.can_destroy(resource_pos):
-                        ct.destroy(resource_pos)
-                    ct.build_harvester(resource_pos)
-                    self.state = Convey(DStarLite(self.memory.grid, ct.get_position(), self.get_closest_adj_pos(ct, self.core_pos), r2=1))
-            case Convey(path_finder):
-                if ct.get_position().distance_squared(self.core_pos) <= 2:
-                    self.harvest_new_resource(ct)
-                else:
-                    self.convey2(ct, path_finder)
-            case ConveyBuildConveyor(build_pos, next_state):
-                if ct.can_destroy(build_pos):
-                    ct.destroy(build_pos)
-                if ct.can_build_conveyor(build_pos, build_pos.direction_to(ct.get_position())):
-                    ct.build_conveyor(build_pos, build_pos.direction_to(ct.get_position()))
-                    self.state = next_state
+        while True:
+            match self.state:
+                case Init():
+                    direction = self.core_pos.direction_to(ct.get_position())
+                    self.state = Explore(5, direction)
+                    continue
+                case Explore(turns_left, direction):
+                    if self.explore(ct, direction):
+                        self.state = Explore(turns_left - 1, direction)
+                    else:
+                        turns_left = 0 # end exploration early if we get blocked by something
+                    if turns_left <= 0:
+                        self.harvest_new_resource(ct)
+                case MoveTo(path_finder, next_state):
+                    if ct.get_position() == path_finder.s_goal:
+                        self.state = next_state
+                        continue
+                    else:
+                        self.move_to(ct, path_finder)
+                case Patrol():
+                    pass
+                case Harvest(resource_pos):
+                    if self.memory.grid[resource_pos.x][resource_pos.y].building and self.memory.grid[resource_pos.x][resource_pos.y].building.type == EntityType.HARVESTER:
+                        self.harvest_new_resource(ct)
+                    if ct.can_build_harvester(resource_pos):
+                        # if ct.can_destroy(resource_pos):
+                        #     ct.destroy(resource_pos)
+                        ct.build_harvester(resource_pos)
+                        self.state = Convey(DStarLite(self.memory, ct.get_position(), self.get_closest_adj_pos(ct, self.core_pos), r2=1))
+                case Convey(path_finder):
+                    if ct.get_position().distance_squared(self.core_pos) <= 2:
+                        self.harvest_new_resource(ct)
+                    else:
+                        self.convey2(ct, path_finder)
+                case ConveyBuildConveyor(build_pos, next_state):
+                    if ct.can_destroy(build_pos):
+                        ct.destroy(build_pos)
+                    if ct.can_build_conveyor(build_pos, build_pos.direction_to(ct.get_position())):
+                        ct.build_conveyor(build_pos, build_pos.direction_to(ct.get_position()))
+                        self.state = next_state
+            break
+
+        t1 = time.perf_counter()
+        print(f"Turn took {((t1-t0)*1000):.4f} ms")
                 
 

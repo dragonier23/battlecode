@@ -49,11 +49,11 @@ class BuilderBot:
         return False
     
     def harvest_new_resource(self, ct: Controller) -> None:
-        resource_pos = self.get_closest_resource(ct)
+        resource_pos = self.memory.get_closest_resource(ct)
         if resource_pos is not None:
-            resource_ortho_pos = min([resource_pos.add(d) for d in ORTHOGONAL_DIRS if is_movable(self.memory.grid, resource_pos.add(d))], key=lambda p: p.distance_squared(resource_pos), default=None)
+            resource_ortho_pos = min([resource_pos.add(d) for d in ORTHOGONAL_DIRS if is_movable(self.memory.grid, resource_pos.add(d))], key=lambda p: p.distance_squared(self.core_pos), default=None)
             if resource_ortho_pos is not None:
-                self.state = MoveTo(DStarLite(self.memory.grid, ct.get_position(), resource_ortho_pos, r2=2), Harvest(resource_pos))
+                self.state = MoveTo(DStarLite(self.memory, ct.get_position(), resource_ortho_pos, r2=2), Harvest(resource_pos))
             else:
                 self.state = Explore(5, random.choice(ORTHOGONAL_DIRS))
         else:
@@ -69,28 +69,25 @@ class BuilderBot:
             return True
         return False
 
-    def get_closest_resource(self, ct: Controller) -> Position | None:
-        """Returns the position of the closest ore or axionite, or None if there are no known resources."""
-        pos = ct.get_position()
-        closest_resource = None
-        closest_distance = float('inf')
-
-        for x in range(self.w):
-            for y in range(self.h):
-                tile = self.memory.grid[x][y]
-                if tile.env in [Environment.ORE_AXIONITE, Environment.ORE_TITANIUM] and \
-                    (not tile.building or tile.building.type != EntityType.HARVESTER):
-                    print("Found resource at", x, y)
-                    distance = pos.distance_squared(Position(x, y))
-                    if distance < closest_distance:
-                        closest_resource = Position(x, y)
-                        closest_distance = distance
-
-        return closest_resource
-
     def get_closest_adj_pos(self, ct: Controller, pos: Position) -> Position:
         """Returns the closest square in a 3x3 area centred at pos to the bot's current position."""
         return min([p for p in pos_within_r2(self.w, self.h, pos, 2) if is_movable(self.memory.grid, p)], key=lambda p: ct.get_position().distance_squared(p))
+
+    def move_random(self, ct: Controller) -> None:
+        """Move in a random direction to prevent softlocks."""
+        positions = [p for p in pos_within_r2(self.w, self.h, ct.get_position(), 2) if is_movable(self.memory.grid, p) and p != ct.get_position()]
+        if positions:
+            self.move_may_build_road(ct, ct.get_position().direction_to(random.choice(positions)))
+
+    def move_to(self, ct: Controller, path_finder: PathFinder) -> None:
+        next_pos = path_finder.get_next_pos(ct.get_position())
+        print(f'next_pos: {next_pos}')
+        if next_pos:
+            direction = ct.get_position().direction_to(next_pos)
+            if not self.move_may_build_road(ct, direction):
+                self.move_random(ct)
+        else: 
+            self.move_random(ct)
 
     def search(self, ct: Controller, target: Position) -> None: 
         for d in [Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST]:
@@ -129,9 +126,20 @@ class BuilderBot:
             ct.build_road(currPos.add(nextDirection))
             self.conveyor_path.appendleft((currPos, nextDirection))
 
+    def build_conveyor(self, ct: Controller, build_pos: Position, direction: Direction):
+        """Build a conveyor in the given position and direction, destroying any existing building if necessary. Returns True if successful."""
+        if self.memory.is_directional_building(ct, build_pos, EntityType.CONVEYOR, direction):
+            return True
+        if ct.can_destroy(build_pos):
+            ct.destroy(build_pos)
+        if ct.can_build_conveyor(build_pos, direction):
+            ct.build_conveyor(build_pos, direction)
+            return True
+        return False
+
     def convey2(self, ct: Controller, path_finder: PathFinder):
         """Convey written by Justin"""
-        next_pos = path_finder.get_next_pos(ct.get_position(), self.memory.grid)
+        next_pos = path_finder.get_next_pos(ct.get_position())
         print(next_pos)
         if next_pos:
             prev_pos = ct.get_position()
@@ -146,7 +154,7 @@ class BuilderBot:
                         self.state = ConveyBuildConveyor(prev_pos, self.state)
                 else:
                     self.harvest_new_resource(ct)
-
+        
     def get_suitable_bridge_pos(self, ct: Controller, resource_pos: Position) -> Position | None:
         """Returns a position adjacent to resource_pos that would be suitable for building a bridge, or None if no such position exists."""
         for d in ORTHOGONAL_DIRS:
@@ -158,19 +166,23 @@ class BuilderBot:
     def bridge_convey(self, ct: Controller, path_finder: PathFinder):
         """Convey via bridges"""
         cur_pos = ct.get_position()
-        next_pos = path_finder.get_next_pos(path_finder.s_start, self.memory.grid)
+        next_pos = path_finder.get_next_pos(cur_pos)
         if next_pos:
-            # Place bridge
+            if self.memory.grid[cur_pos.x][cur_pos.y].building and self.memory.grid[cur_pos.x][cur_pos.y].building.type == EntityType.BRIDGE:
+                self.state = MoveTo(
+                    DStarLite(self.memory, ct.get_position(), next_pos, r2=2),
+                    next_state=self.state
+                )
+                return
             if ct.can_destroy(cur_pos):
                 ct.destroy(cur_pos)
             if ct.can_build_bridge(cur_pos, next_pos):
                 ct.build_bridge(cur_pos, next_pos)
                 # Move close to next pos, repeat
                 self.state = MoveTo(
-                    DStarLite(self.memory.grid, ct.get_position(), next_pos, r2=2),
+                    DStarLite(self.memory, ct.get_position(), next_pos, r2=2),
                     next_state=self.state
                 )
-            
 
     def update_conveyor_path(self, ct: Controller, pos: Position) -> None: 
         '''
