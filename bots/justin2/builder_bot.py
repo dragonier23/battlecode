@@ -139,23 +139,21 @@ class BuilderBot:
 
     def convey2(self, ct: Controller, path_finder: PathFinder):
         """Convey written by Justin"""
-        if self.memory.is_building(ct, ct.get_position(), EntityType.CONVEYOR):
-            cur_pos = ct.get_position()
-            direction = self.memory.grid[cur_pos.x][cur_pos.y].building.direction
-            build_pos = ct.get_position().add(direction)
-            next_pos = path_finder.get_next_pos(build_pos)
-        else:
-            next_pos = path_finder.get_next_pos(ct.get_position())
+        next_pos = path_finder.get_next_pos(ct.get_position())
         print(next_pos)
-        if not next_pos:
-            return
-        if not self.build_conveyor(ct, ct.get_position(), ct.get_position().direction_to(next_pos)):
-            return
-        cur_pos = ct.get_position()
-        direction = self.memory.grid[cur_pos.x][cur_pos.y].building.direction
-        build_pos = ct.get_position().add(direction)
-        self.build_conveyor(ct, build_pos, build_pos.direction_to(ct.get_position()))
-        self.move_may_build_road(ct, ct.get_position().direction_to(build_pos))
+        if next_pos:
+            prev_pos = ct.get_position()
+            direction = prev_pos.direction_to(next_pos)
+            if self.move_may_build_road(ct, direction):
+                if self.memory.grid[prev_pos.x][prev_pos.y].building != BuildingState(EntityType.CONVEYOR, direction):
+                    if ct.can_destroy(prev_pos):
+                        ct.destroy(prev_pos)
+                    if ct.can_build_conveyor(prev_pos, direction):
+                        ct.build_conveyor(prev_pos, direction)
+                    else:
+                        self.state = ConveyBuildConveyor(prev_pos, self.state)
+                else:
+                    self.harvest_new_resource(ct)
         
     def get_suitable_bridge_pos(self, ct: Controller, resource_pos: Position) -> Position | None:
         """Returns a position adjacent to resource_pos that would be suitable for building a bridge, or None if no such position exists."""

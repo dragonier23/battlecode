@@ -10,10 +10,10 @@ class Memory:
         self.grid : List[List[TileState]] = [[TileState() for _ in range(self.h)] for _ in range(self.w)]
         self.titanium_pos : List[Position] = []
         self.axionite_pos : List[Position] = []
-        self.changed_tiles : List[Position] = []
+        self.changed_tiles : set[Position] = set()
 
     def get_closest_resource(self, ct: Controller) -> Position | None:
-        positions = self.titanium_pos + self.axionite_pos
+        positions = self.titanium_pos
         positions.sort(key=lambda p: ct.get_position().distance_squared(p), reverse=True)
         while positions and self.is_building(ct, positions[-1], EntityType.HARVESTER):
             positions.pop()
@@ -25,10 +25,12 @@ class Memory:
     def is_directional_building(self, ct: Controller, pos: Position, building: EntityType, direction: Direction) -> bool:
         return is_in_bounds(pos, ct) and self.grid[pos.x][pos.y].building is not None and self.grid[pos.x][pos.y].building.type == building and self.grid[pos.x][pos.y].building.direction == direction
 
+    def reset_changed_tiles(self) -> None:
+        self.changed_tiles = set()
+
     def update(self, ct: Controller) -> None:
         """Intended to be called at the start of every turn to update the bot's memory."""
         pos = ct.get_position()
-        self.changed_tiles = []
         for pos in ct.get_nearby_tiles(): 
             x, y = pos.x, pos.y
             prev_movable = is_movable(self.grid, pos)
@@ -48,7 +50,6 @@ class Memory:
                 direction = ct.get_direction(entity_id) if entity_type.name in DirectedBuildings.__members__ else None
                 self.grid[x][y].bot =  True if ct.get_tile_builder_bot_id(pos) else False
                 self.grid[x][y].building = BuildingState(entity_type, direction)
-                self.changed_tiles.append(pos)
 
             if prev_movable != is_movable(self.grid, pos):
-                self.changed_tiles.append(pos)
+                self.changed_tiles.add(pos)

@@ -21,14 +21,10 @@ class PathFinder:
 
 INT_MAX = 10**9
 
-VISION_EDGE_MIN_R2 = 13 # 3^2 + 2^2
-VISION_EDGE_MAX_R2 = 20 # 4^2 + 2^2
-
-MAX_ITERS = 20
+MAX_ITERS = 40
 
 class DStarLite(PathFinder):
     def __init__(self, memory: Memory, start: Position, goal: Position, r2: int):
-        t0 = time.perf_counter()
         super().__init__(memory, start, goal)
         self.s_start = start
         self.s_last = start
@@ -36,7 +32,7 @@ class DStarLite(PathFinder):
         self.memory = memory
         self.r2 = r2
 
-        self.U = HeapPQ()
+        self.U = PriorityQueue()
         self.k_m = 0
         self.w = len(self.memory.grid)
         self.h = len(self.memory.grid[0])
@@ -46,12 +42,9 @@ class DStarLite(PathFinder):
         self.U.insert(self.calculate_key(goal), goal)
         self.interrupted = False
         self.iters = 0
+        self.memory.reset_changed_tiles()
 
-        t1 = time.perf_counter()
-        print(f"DStarLite initialization took {((t1-t0)*1000):.4f} ms")
         self.compute_shortest_path()
-        t2 = time.perf_counter()
-        print(f"DStarLite initial compute_shortest_path took {((t2-t1)*1000):.4f} ms")
 
     def __repr__(self) -> str:
         return f"DStarLite(s_start={self.s_start}, s_goal={self.s_goal}, r2={self.r2}, k_m={self.k_m})"
@@ -78,64 +71,87 @@ class DStarLite(PathFinder):
         return [p for p in pos_within_r2(self.w, self.h, u, self.r2) if p != u]
 
     def update_vertex(self, u: Position) -> None:
-        if u != self.s_goal:
-            self.rhs[u.x][u.y] = min([self.c(u, s) + self.g[s.x][s.y] for s in self.succs(u)])
-        if self.U.is_member(u):
-            self.U.remove(u)
-        if self.g[u.x][u.y] != self.rhs[u.x][u.y]:
+        if self.g[u.x][u.y] != self.rhs[u.x][u.y] and self.U.is_member(u):
+            self.U.update(u, self.calculate_key(u))
+        elif self.g[u.x][u.y] != self.rhs[u.x][u.y]: # and not in U
             self.U.insert(self.calculate_key(u), u)
+        elif self.U.is_member(u): # and g == rhs 
+            self.U.remove(u)
 
     def compute_shortest_path(self) -> None:
-        while self.U.top_key() < self.calculate_key(self.s_start) or self.rhs[self.s_start.x][self.s_start.y] != self.g[self.s_start.x][self.s_start.y]:
-            t0 = time.perf_counter()
-            k_old, u = self.U.pop()
-            k_new = self.calculate_key(u)
-            if k_old < k_new:
-                self.U.insert(k_new, u)
-            elif self.g[u.x][u.y] > self.rhs[u.x][u.y]:
-                self.g[u.x][u.y] = self.rhs[u.x][u.y]
-                for s in self.succs(u):
-                    self.update_vertex(s)
-            else:
-                self.g[u.x][u.y] = INT_MAX
-                for s in self.succs(u) + [u]:
-                    self.update_vertex(s)
-            self.iters += 1
+        while self.U.top_key() < self.calculate_key(self.s_start) or self.rhs[self.s_start.x][self.s_start.y] > self.g[self.s_start.x][self.s_start.y]:
             if self.iters >= MAX_ITERS:
                 self.interrupted = True
                 break
-            print(f"One iteration of compute_shortest_path took {((time.perf_counter()-t0)*1000):.4f} ms")
+            # t0 = time.perf_counter()
+            k_old, u = self.U.top()
+            k_new = self.calculate_key(u)
+            if k_old < k_new:
+                self.U.update(u, k_new)
+            elif self.g[u.x][u.y] > self.rhs[u.x][u.y]:
+                self.g[u.x][u.y] = self.rhs[u.x][u.y]
+                self.U.remove(u)
+                for s in self.succs(u):
+                    if s != self.s_goal:
+                        self.rhs[s.x][s.y] = min(self.rhs[s.x][s.y], self.c(s, u) + self.g[u.x][u.y])
+                    self.update_vertex(s)
+            else:
+                g_old = self.g[u.x][u.y]
+                self.g[u.x][u.y] = INT_MAX
+                succs = self.succs(u)
+                succs.append(u)
+                for s in succs:
+                    if self.rhs[s.x][s.y] == self.c(s, u) + g_old:
+                        if s != self.s_goal:
+                            self.rhs[s.x][s.y] = min([self.c(s, sp) + self.g[sp.x][sp.y] for sp in self.succs(s)])
+                    self.update_vertex(s)
+            self.iters += 1
+            # print(f"One iteration of compute_shortest_path took {((time.perf_counter()-t0)*1000):.4f} ms")
 
-    # def edge_vertices(self, u: Position) -> List[Position]:
-    #     """Returns the vertices at the ends of the vision radius from u."""
-    #     vertices = []
-    #     for v in pos_within_r2(self.w, self.h, u, VISION_EDGE_MAX_R2):
-    #         # if v.distance_squared(u) >= VISION_EDGE_MIN_R2:
-    #         vertices.append(v)
-    #     return vertices
+    # def replan_if_needed(self) -> None:
+    #     self.iters = 0
+    #     changed_vertices = self.memory.changed_tiles
+    #     if changed_vertices:
+    #         self.k_m += self.heuristic(self.s_last, self.s_start)
+    #         self.s_last = self.s_start
+    #         for u in changed_vertices:
+    #             self.update_vertex(u)
+    #         self.compute_shortest_path()
 
     def get_next_pos(self, start: Position) -> Position | None:
         """Returns the position of the next move to get from start to goal, or None if no path exists."""
-        # print_grid(grid)
+        # print_grid(self.memory.grid)
         # print_g_or_rhs(self.g)
         # print_g_or_rhs(self.rhs)
+        self.s_start = start
         self.iters = 0
         if self.interrupted:
             self.interrupted = False
             self.compute_shortest_path() # continue computation
-        if self.interrupted: # still interrupted after computation, approx according to heuristic
-            self.s_start = min([su for su in self.succs(self.s_start)], key=lambda p: self.heuristic(p, self.s_goal) + self.g[p.x][p.y])
-        if self.g[self.s_start.x][self.s_start.y] == INT_MAX:
+        if self.interrupted: # if interrupted during computation, return min according to heuristics
+            print("PF interrupted, returning heuristics")
+            return min([su for su in self.succs(self.s_start)], key=lambda p: self.c(self.s_start, p) + self.heuristic(p, self.s_goal))
+        if self.rhs[self.s_start.x][self.s_start.y] == INT_MAX:
             return None
-        self.s_start = start
         changed_vertices = self.memory.changed_tiles
         if changed_vertices:
-            # print("Vertices changed:", changed_vertices, file=sys.stderr)
             self.k_m += self.heuristic(self.s_last, self.s_start)
             self.s_last = start
+            changed_adj = set()
             for u in changed_vertices:
+                for v in self.succs(u):
+                    changed_adj.add(v)
+            # print(f"Changed adjacent vertices: {changed_adj}")
+            for u in changed_vertices.union(changed_adj):
+                old_rhs = self.rhs[u.x][u.y]
+                self.rhs[u.x][u.y] = min([self.c(u, sp) + self.g[sp.x][sp.y] for sp in self.succs(u)])
+                # print(f"Updating vertex {u} with old rhs {old_rhs} and new rhs {self.rhs[u.x][u.y]}")
                 self.update_vertex(u)
             self.compute_shortest_path()
+            self.memory.reset_changed_tiles()
+        if self.interrupted: # if interrupted during computation, return min according to heuristics
+            print("PF interrupted, returning heuristics")
+            return min([su for su in self.succs(self.s_start)], key=lambda p: self.c(self.s_start, p) + self.heuristic(p, self.s_goal))
         self.s_start = min([su for su in self.succs(self.s_start)], key=lambda p: self.c(self.s_start, p) + self.g[p.x][p.y])
         return self.s_start
     
